@@ -1,4 +1,6 @@
-## Store ORM
+## Generic Function ORM
+
+*(It actually uses generic methods, but "gmorm" doesn't work quite as well)*
 
 Highly opinionated, [Modern-C](https://github.com/modernc-org/sqlite) SQLite-backed (no CGO), using the new generic methods released in [Go 1.27](https://go.dev/blog/go1.27).
 
