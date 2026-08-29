@@ -8,10 +8,12 @@ import (
 )
 
 type QueryBuilder[T any] struct {
-	store   *Store
-	type_   reflect.Type
-	wheres  []whereClause
-	orderBy string
+	store          *Store
+	type_          reflect.Type
+	wheres         []whereClause
+	orderBy        string
+	additionalArgs []any
+	rawSql         string
 }
 
 type whereClause struct {
@@ -38,17 +40,17 @@ func (q *QueryBuilder[T]) OrderBy(orderBy string) *QueryBuilder[T] {
 	return q
 }
 
-func (q *QueryBuilder[T]) addWhere(args ...any) {
-	if len(args) > 0 {
-		if condition, ok := args[0].(string); ok && condition != "" {
-			q.wheres = append(q.wheres, whereClause{condition: condition, args: args[1:]})
-		}
-	}
+func (q *QueryBuilder[T]) appendArgs(args ...any) {
+	q.additionalArgs = append(q.additionalArgs, args...)
 }
 
 func (q *QueryBuilder[T]) buildQuery() (string, []any) {
-	var sb strings.Builder
+	if q.rawSql != "" {
+		return q.rawSql, q.additionalArgs
+	}
+
 	var allArgs []any
+	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("SELECT * FROM %s", q.type_.Name()))
 
@@ -67,10 +69,17 @@ func (q *QueryBuilder[T]) buildQuery() (string, []any) {
 	}
 
 	sb.WriteString(";")
+
+	allArgs = append(allArgs, q.additionalArgs...)
+
 	return sb.String(), allArgs
 }
 
-func (q *QueryBuilder[T]) scanRow(scanner interface{ Scan(dest ...any) error }) (T, error) {
+type Scanner interface {
+	Scan(dest ...any) error
+}
+
+func (q *QueryBuilder[T]) scanRow(scanner Scanner) (T, error) {
 	var item T
 	v := reflect.ValueOf(&item).Elem()
 	ptrs := make([]any, q.type_.NumField())
@@ -84,7 +93,7 @@ func (q *QueryBuilder[T]) scanRow(scanner interface{ Scan(dest ...any) error }) 
 }
 
 func (q *QueryBuilder[T]) All(args ...any) ([]T, error) {
-	q.addWhere(args...)
+	q.appendArgs(args...)
 	query, args := q.buildQuery()
 	rows, err := q.store.DB.Query(query, args...)
 	if err != nil {
@@ -104,7 +113,7 @@ func (q *QueryBuilder[T]) All(args ...any) ([]T, error) {
 }
 
 func (q *QueryBuilder[T]) One(args ...any) (T, error) {
-	q.addWhere(args...)
+	q.appendArgs(args...)
 	var zero T
 	query, args := q.buildQuery()
 	row := q.store.DB.QueryRow(query, args...)
@@ -119,17 +128,17 @@ func (q *QueryBuilder[T]) One(args ...any) (T, error) {
 }
 
 func (q *QueryBuilder[T]) First(args ...any) (T, error) {
-	q.addWhere(args...)
+	q.appendArgs(args...)
 	return q.OrderBy("rowid ASC").One()
 }
 
 func (q *QueryBuilder[T]) Last(args ...any) (T, error) {
-	q.addWhere(args...)
+	q.appendArgs(args...)
 	return q.OrderBy("rowid DESC").One()
 }
 
 func (q *QueryBuilder[T]) Count(args ...any) (int, error) {
-	q.addWhere(args...)
+	q.appendArgs(args...)
 	query, args := q.buildQuery()
 	query = strings.Replace(query, "SELECT *", "SELECT COUNT(*)", 1)
 	var count int
@@ -137,7 +146,12 @@ func (q *QueryBuilder[T]) Count(args ...any) (int, error) {
 	return count, err
 }
 
-func (q *QueryBuilder[T]) SQL() string {
+// Overrides the normal query-building pipeline
+func (q *QueryBuilder[T]) SQL(rawSql string) {
+	q.rawSql = rawSql
+}
+
+func (q *QueryBuilder[T]) ToSQL() string {
 	query, _ := q.buildQuery()
 
 	return query

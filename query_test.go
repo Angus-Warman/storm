@@ -174,7 +174,7 @@ func TestQuerySQL(t *testing.T) {
 	sql := s.Get[RecordTextID]().
 		Where("ID = ?", "test").
 		OrderBy("Value ASC").
-		SQL()
+		ToSQL()
 	require.Equal(t, "SELECT * FROM RecordTextID WHERE ID = ? ORDER BY Value ASC;", sql)
 }
 
@@ -182,7 +182,7 @@ func TestQuerySQL_NoClauses(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, s.CreateTable[RecordTextID]())
 
-	sql := s.Get[RecordTextID]().SQL()
+	sql := s.Get[RecordTextID]().ToSQL()
 	require.Equal(t, "SELECT * FROM RecordTextID;", sql)
 }
 
